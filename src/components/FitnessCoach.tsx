@@ -466,16 +466,30 @@ const FitnessCoach = () => {
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Técnica Ideal</h3>
             </div>
             
-            {/* Ilustración compacta */}
-            <div className="w-24 h-24 bg-blue-200 rounded-full flex items-center justify-center mb-4">
-              <div className="w-12 h-12 bg-blue-400 rounded-full relative">
-                <div className="absolute -top-1.5 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-blue-600 rounded-full" />
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 w-0.5 h-6 bg-blue-600" />
-                <div className="absolute top-6 left-1/2 transform -translate-x-1/2 w-4 h-0.5 bg-blue-600" />
-                <div className="absolute top-9 left-1/2 transform -translate-x-1/2 w-0.5 h-4 bg-blue-600" />
-                <div className="absolute top-9 left-1.5 w-0.5 h-4 bg-blue-600" />
-                <div className="absolute top-9 right-1.5 w-0.5 h-4 bg-blue-600" />
-              </div>
+            {/* Video referencial */}
+            <div className="w-72 h-48 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl overflow-hidden mb-4 shadow-xl ring-2 ring-blue-300/50 transition-all hover:ring-blue-400/70 hover:shadow-2xl">
+              <video 
+                className="w-full h-full object-cover rounded-xl"
+                autoPlay
+                loop
+                muted
+                controls
+                preload="metadata"
+                style={{ backgroundColor: '#1f2937' }}
+                poster="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233B82F6'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E"
+              >
+                <source src="/video_man.mp4" type="video/mp4" />
+                <div className="flex items-center justify-center h-full text-blue-600 text-sm font-medium">
+                  📹 Video de referencia
+                </div>
+              </video>
+            </div>
+            
+            {/* Etiqueta del video */}
+            <div className="text-center mb-3">
+              <p className="text-sm font-medium text-blue-700 bg-blue-50 px-3 py-1 rounded-full inline-block">
+                🎯 Técnica perfecta para {selectedExercise?.name || 'el ejercicio'}
+              </p>
             </div>
 
             {/* Tips esenciales */}
