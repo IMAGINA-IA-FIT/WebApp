@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Play, Square, ArrowLeft, Camera, Download } from 'lucide-react';
+import { Play, Square, ArrowLeft, Camera } from 'lucide-react';
+import { localVideoSaver } from '@/services/localVideoSave';
+import { videoUploadService } from '@/services/videoUpload';
 
 interface Exercise {
   id: string;
@@ -17,6 +19,9 @@ const FitnessCoach = () => {
   const [recordedChunks, setRecordedChunks] = useState<Blob[]>([]);
   const [hasRecording, setHasRecording] = useState(false);
   const [coachFeedback, setCoachFeedback] = useState<string>("");
+  const [isSending, setIsSending] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState(false);
+  const [sessionId, setSessionId] = useState<string>("");
 
   // Referencias
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -96,16 +101,78 @@ const FitnessCoach = () => {
 
     mediaRecorderRef.current = mediaRecorder;
     setRecordedChunks([]);
+    
+    // Variable local para acumular chunks
+    let localChunks: Blob[] = [];
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
+        localChunks.push(event.data);
         setRecordedChunks(prev => [...prev, event.data]);
       }
     };
 
-    mediaRecorder.onstop = () => {
+    mediaRecorder.onstop = async () => {
       setHasRecording(true);
-      setCoachFeedback("");
+      setCoachFeedback("🤖 Analizando tu ejercicio...");
+      speakFeedback("Analizando tu ejercicio y generando feedback");
+      
+      // Procesar video automáticamente (guardar local + enviar a backend para feedback IA)
+      if (localChunks.length > 0) {
+        try {
+          const blob = new Blob(localChunks, { type: 'video/webm' });
+          const exerciseName = selectedExercise?.name || 'exercise';
+          
+          // 1. Guardar localmente (silencioso en background)
+          console.log('💾 Guardando video localmente...');
+          const saveResult = await localVideoSaver.saveVideo(blob, exerciseName);
+          
+          // 2. Enviar al backend para análisis de IA
+          console.log('🤖 Enviando video para análisis de IA...');
+          setCoachFeedback("🤖 Generando feedback personalizado...");
+          const uploadResult = await videoUploadService.uploadVideo(blob);
+          
+          // Mostrar resultado final tipo toast
+          if (saveResult.success && uploadResult.success) {
+            setCoachFeedback("✅ ¡Feedback generado exitosamente!");
+            speakFeedback("Feedback generado exitosamente");
+            setSendSuccess(true);
+            setSessionId(saveResult.fileName || '');
+            
+            // Toast desaparece después de 4 segundos
+            setTimeout(() => {
+              setCoachFeedback("");
+            }, 4000);
+          } else if (saveResult.success && !uploadResult.success) {
+            setCoachFeedback("⚠️ Video guardado - Error en análisis IA");
+            speakFeedback("Video guardado pero error en el análisis");
+            setSendSuccess(true);
+            setSessionId(saveResult.fileName || '');
+            
+            // Error desaparece después de 5 segundos
+            setTimeout(() => {
+              setCoachFeedback("");
+            }, 5000);
+          } else {
+            setCoachFeedback("❌ Error al generar feedback");
+            speakFeedback("Error al generar feedback");
+            
+            // Error desaparece después de 4 segundos
+            setTimeout(() => {
+              setCoachFeedback("");
+            }, 4000);
+          }
+        } catch (error) {
+          console.error('Error processing video for AI feedback:', error);
+          setCoachFeedback("❌ Error al generar feedback");
+          speakFeedback("Error al generar feedback");
+          
+          // Error desaparece después de 4 segundos
+          setTimeout(() => {
+            setCoachFeedback("");
+          }, 4000);
+        }
+      }
     };
 
     mediaRecorder.start();
@@ -158,21 +225,9 @@ const FitnessCoach = () => {
     }
   };
 
-  // Descargar video (placeholder para Google Cloud)
-  const downloadVideo = () => {
-    if (recordedChunks.length === 0) return;
 
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${selectedExercise?.name}-${Date.now()}.webm`;
-    a.click();
-    URL.revokeObjectURL(url);
 
-    // TODO: Aquí enviarías a Google Cloud Storage
-    console.log('Video listo para enviar a Google Cloud:', blob);
-  };
+
 
   // Función para reproducir feedback por voz (preparada para agente IA)
   const speakFeedback = (message: string) => {
@@ -197,6 +252,9 @@ const FitnessCoach = () => {
     setHasRecording(false);
     setRecordedChunks([]);
     setCoachFeedback("");
+    setIsSending(false);
+    setSendSuccess(false);
+    setSessionId("");
   };
 
   // Regresar a selección
@@ -210,6 +268,9 @@ const FitnessCoach = () => {
     setHasRecording(false);
     setRecordedChunks([]);
     setCoachFeedback("");
+    setIsSending(false);
+    setSendSuccess(false);
+    setSessionId("");
   };
 
   // Inicializar cámara al entrar a workout
@@ -322,18 +383,34 @@ const FitnessCoach = () => {
             </div>
           )}
 
-          {/* Coach IA Feedback Flotante - Solo en mobile */}
+          {/* Toast de Feedback IA - Solo en mobile */}
           {coachFeedback ? (
             <div className="md:hidden absolute top-4 left-4 right-4 z-20 animate-in slide-in-from-top-4 duration-300">
-              <div className="bg-gradient-to-r from-blue-600/90 to-purple-600/90 backdrop-blur-md text-white px-4 py-3 rounded-xl shadow-2xl border border-white/20">
+              <div className={`backdrop-blur-md text-white px-4 py-3 rounded-xl shadow-2xl border border-white/20 ${
+                coachFeedback.includes('✅') ? 'bg-gradient-to-r from-green-600/90 to-emerald-600/90' :
+                coachFeedback.includes('❌') ? 'bg-gradient-to-r from-red-600/90 to-rose-600/90' :
+                coachFeedback.includes('⚠️') ? 'bg-gradient-to-r from-yellow-600/90 to-orange-600/90' :
+                coachFeedback.includes('🤖') ? 'bg-gradient-to-r from-blue-600/90 to-purple-600/90' :
+                'bg-gradient-to-r from-blue-600/90 to-purple-600/90'
+              }`}>
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-xs font-bold">AI</span>
+                    <span className="text-xs font-bold">
+                      {coachFeedback.includes('🤖') ? '🤖' : 
+                       coachFeedback.includes('✅') ? '✅' :
+                       coachFeedback.includes('❌') ? '❌' :
+                       coachFeedback.includes('⚠️') ? '⚠️' : 'AI'}
+                    </span>
                   </div>
                   <div className="flex-1">
                     <p className="text-sm font-medium leading-tight">{coachFeedback}</p>
                   </div>
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0" />
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    coachFeedback.includes('✅') ? 'bg-green-300 animate-pulse' :
+                    coachFeedback.includes('❌') ? 'bg-red-300' :
+                    coachFeedback.includes('⚠️') ? 'bg-yellow-300' :
+                    'bg-white animate-pulse'
+                  }`} />
                 </div>
               </div>
             </div>
@@ -374,18 +451,9 @@ const FitnessCoach = () => {
                 </div>
               )}
 
-              {/* Botón descargar */}
-              {hasRecording && !isRecording && (
-                <div className="text-center">
-                  <Button
-                    onClick={downloadVideo}
-                    className="w-16 h-16 md:w-12 md:h-12 rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-xl active:scale-95 transition-all"
-                  >
-                    <Download className="w-6 h-6 md:w-5 md:h-5" />
-                  </Button>
-                  <p className="text-white text-xs mt-2 font-medium">Descargar</p>
-                </div>
-              )}
+
+
+
             </div>
           </div>
         </div>
@@ -428,11 +496,27 @@ const FitnessCoach = () => {
             </div>
             
             {/* Feedback del coach */}
-            <div className="min-h-[60px] p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500">
+            <div className={`min-h-[60px] p-4 rounded-lg border-l-4 transition-colors duration-300 ${
+              coachFeedback.includes('✅') ? 'bg-green-50 border-green-500' :
+              coachFeedback.includes('❌') ? 'bg-red-50 border-red-500' :
+              coachFeedback.includes('⚠️') ? 'bg-yellow-50 border-yellow-500' :
+              coachFeedback.includes('🤖') ? 'bg-blue-50 border-blue-500' :
+              'bg-gray-50 border-blue-500'
+            }`}>
               {coachFeedback ? (
                 <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse flex-shrink-0" />
-                  <p className="text-sm text-gray-700 font-medium">{coachFeedback}</p>
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    coachFeedback.includes('✅') ? 'bg-green-500 animate-pulse' :
+                    coachFeedback.includes('❌') ? 'bg-red-500' :
+                    coachFeedback.includes('⚠️') ? 'bg-yellow-500' :
+                    'bg-blue-500 animate-pulse'
+                  }`} />
+                  <p className={`text-sm font-medium ${
+                    coachFeedback.includes('✅') ? 'text-green-700' :
+                    coachFeedback.includes('❌') ? 'text-red-700' :
+                    coachFeedback.includes('⚠️') ? 'text-yellow-700' :
+                    'text-gray-700'
+                  }`}>{coachFeedback}</p>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500 italic">
